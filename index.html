@@ -4,26 +4,174 @@
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <title>Unity Web Player | GoldenShelter</title>
+    <script src="https://telegram.org/js/telegram-web-app.js?59"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      border: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #231F20;
+      font-family: sans-serif;
+    }
+
+    body {
+      position: relative;
+    }
+
+    #unity-canvas {
+      width: 100vw !important;
+      height: 100vh !important;
+      background: #231F20;
+      outline: none;
+      display: block;
+    }
+
+    #loading-overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      background: #231F20;
+      color: #F5F5F5;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      transition: opacity 0.4s ease;
+      z-index: 10;
+    }
+
+    body.loaded #loading-overlay {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #progress-track {
+      width: min(320px, 70vw);
+      height: 8px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    #progress-fill {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #F7C548, #F08C00);
+      border-radius: inherit;
+      transition: width 0.15s ease;
+    }
+
+    #progress-text {
+      font-size: 0.9rem;
+      color: rgba(255, 255, 255, 0.85);
+    }
+
+    #build-info {
+      font-size: 0.7rem;
+      color: rgba(255, 255, 255, 0.65);
+      letter-spacing: 0.16em;
+    }
+
+    #rotate-message {
+      font-size: 0.85rem;
+      color: rgba(255, 255, 255, 0.9);
+      letter-spacing: 0.08em;
+      text-align: center;
+      padding: 16px;
+      display: none;
+    }
+
+    @media (max-width: 768px) and (orientation: portrait) {
+      #rotate-message {
+        display: block;
+      }
+    }
+  </style>
   </head>
   <body style="text-align: center; padding: 0; border: 0; margin: 0;">
     <canvas id="unity-canvas" width=960 height=540 tabindex="-1" style="width: 960px; height: 540px; background: #231F20"></canvas>
+    <div id="loading-overlay" role="status" aria-live="polite">
+      <div id="rotate-message">Переверните устройство горизонтально (на бок)</div>
+      <div id="progress-track">
+        <div id="progress-fill"></div>
+      </div>
+      <div id="progress-text">Загрузка 0%</div>
+      <div id="build-info">v.?</div>
+    </div>
     <script src="Build/GoldWeb2.loader.js"></script>
     <script>
-      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        // Mobile device style: fill the whole browser client area with the game canvas:
-        var meta = document.createElement('meta');
-        meta.name = 'viewport';
-        meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
-        document.getElementsByTagName('head')[0].appendChild(meta);
+      const BUILD_VERSION = "17";
+      const telegramApp = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 
-        var canvas = document.querySelector("#unity-canvas");
-        canvas.style.width = "100%";
-        canvas.style.height = "100%";
-        canvas.style.position = "fixed";
+function isTelegramAvailable() {
+  return telegramApp && typeof telegramApp === 'object';
+}
 
-        document.body.style.textAlign = "left";
+function hasTelegramMethod(methodName) {
+  return isTelegramAvailable() && typeof telegramApp[methodName] === 'function';
+}
 
-      }
+if (hasTelegramMethod('ready')) {
+  telegramApp.ready();
+}
+
+const unityCanvas = document.querySelector("#unity-canvas");
+const loadingOverlay = document.getElementById("loading-overlay");
+const progressFill = document.getElementById("progress-fill");
+const progressText = document.getElementById("progress-text");
+const buildInfo = document.getElementById("build-info");
+const rotateMessage = document.getElementById("rotate-message");
+
+if (buildInfo) {
+  buildInfo.textContent = `v.${BUILD_VERSION}`;
+}
+
+function applyViewportMeta() {
+  var meta = document.createElement('meta');
+  meta.name = 'viewport';
+  meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
+  document.getElementsByTagName('head')[0].appendChild(meta);
+}
+
+if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+  applyViewportMeta();
+}
+
+if (hasTelegramMethod('disableVerticalSwipes')) {
+  telegramApp.disableVerticalSwipes();
+}
+
+function checkOrientation() {
+  if (rotateMessage) {
+    const isPortrait = window.innerHeight > window.innerWidth;
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    rotateMessage.style.display = (isMobile && isPortrait) ? 'block' : 'none';
+  }
+}
+
+checkOrientation();
+window.addEventListener('resize', checkOrientation);
+window.addEventListener('orientationchange', checkOrientation);
+
+function updateProgress(progress) {
+  const percentage = Math.round(progress * 100);
+  progressFill.style.width = `${percentage}%`;
+  progressText.textContent = `Загрузка ${percentage}%`;
+
+  if (progress >= 0.999) {
+    document.body.classList.add("loaded");
+  }
+}
 
       createUnityInstance(document.querySelector("#unity-canvas"), {
         arguments: [],
@@ -36,9 +184,13 @@
         productVersion: "0.1.0",
         // matchWebGLToCanvasSize: false, // Uncomment this to separately control WebGL canvas render size and DOM element size.
         // devicePixelRatio: 1, // Uncomment this to override low DPI rendering on high DPI displays.
-      }).then((unityInstance) => {
+      }, updateProgress).then((unityInstance) => {
+        if (telegramApp) {
+          telegramApp.expand();
+          telegramApp.requestFullscreen();
+        }
       }).catch((message) => {
-        alert(message);
+        // alert(message);
       });
     </script>
   </body>
